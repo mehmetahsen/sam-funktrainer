@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SAM-Funktrainer demo (simulated device)</title>
+<!-- Runs the real page against tools/fake-receiver.js. Needs a web server: `npm run web`,
+     then open http://localhost:8000/tools/demo.html and click Connect. Add ?nosensor for a sensor that is off. -->
+<script src="fake-receiver.js"></script>
+<script>
+fetch('../index.html').then(r => r.text()).then(html => {
+  document.open();
+  document.write(html.replace("'./sam.js'", "'../sam.js'"));
+  document.close();
+});
+</script>

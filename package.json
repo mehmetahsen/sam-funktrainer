@@ -1,0 +1,16 @@
+{
+  "name": "sam-funktrainer",
+  "version": "0.1.0",
+  "description": "Open-source software for the DISAG / KE Knestel SAM-Funktrainer (web page and command line)",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "sam": "cli.js" },
+  "scripts": {
+    "test": "node test.js",
+    "build": "node build.js",
+    "web": "python3 -m http.server 8000"
+  },
+  "dependencies": {
+    "usb": "^2.14.0"
+  }
+}

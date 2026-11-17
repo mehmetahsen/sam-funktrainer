@@ -1,0 +1,2 @@
+# DISAG / KE Knestel SAM-Funktrainer receiver: give logged-in user access via usbfs
+SUBSYSTEM=="usb", ATTR{idVendor}=="0adc", ATTR{idProduct}=="0005", MODE="0660", TAG+="uaccess"
