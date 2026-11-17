@@ -59,6 +59,16 @@
   <table id="tSessions"></table>
 </section>
 
+<section id="output" style="grid-column: 1 / -1">
+  <div class="logbar">
+    <h2 style="margin: 0 auto 0 0">Live output to other software</h2>
+    <label>WebSocket server <input id="wsUrl" placeholder="192.168.1.20:8765" size="24" title="Address of a WebSocket server that receives the data, as host:port or ws://host:port/path"></label>
+    <label>Positions <select id="wsRate"><option value="100">100 per second</option><option value="20">20 per second</option><option value="10">10 per second</option><option value="0">none (shots only)</option></select></label>
+    <label><input id="wsOn" type="checkbox"> Stream</label>
+    <span id="wsState" role="status">off</span>
+  </div>
+</section>
+
 <details id="tech" open>
   <summary>Technical details</summary>
   <div class="cards">
@@ -163,6 +173,7 @@ function showTech() {
     ['missed samples (estimated)', stats.missed],
     ['ACK / NAK / other replies', `${stats.ack} / ${stats.nak} / ${stats.other}`],
     ['errors and timeouts', stats.errors],
+    ['live output', `${$('wsState').textContent}, ${out.sent} messages sent, ${out.dropped} positions dropped`],
   ]);
 }
 function showDevice() {
@@ -215,6 +226,12 @@ function onSample(s, t) {
   if (lastT && t - lastT > 15) stats.missed += Math.round((t - lastT) / 10) - 1; // samples are 10 ms apart
   const p = tracker.feed(s);
   last = p; lastRaw = s; lastT = t;
+  const rate = Number($('wsRate').value);
+  if (rate && t - out.lastSample >= 1000 / rate - 1) {
+    out.lastSample = t;
+    emit('sample', { t: Math.round(performance.timeOrigin + t), valid: p.valid, overdriven: p.overdriven, x: p.valid ? r2(p.x) : null, y: p.valid ? r2(p.y) : null,
+      a: s.a, b: s.b, c: s.c, d: s.d, force: s.force, force2: s.force2, pulse: s.pulse }, true);
+  }
   if (!p.valid) return;
   trace.push({ x: p.x, y: p.y, t });
   while (trace[0].t < t - TRACE_MS) trace.shift();
@@ -229,6 +246,7 @@ function onSample(s, t) {
     recording = { shot, t0: t };
     log(`SHOT ${session.shots.length}: x ${p.x.toFixed(2)} y ${p.y.toFixed(2)} mm, ring ${ring(Math.hypot(p.x, p.y), target()).toFixed(1)}`);
     listShots();
+    emit('shot', { session: session.id, ...shotInfo(shot, session.shots.length - 1) });
     save();
   }
 }
@@ -259,6 +277,7 @@ let savedIds = new Set();
 async function save() {
   session.name = $('name').value;
   session.target = $('target').value;
+  emitSession();
   if (!session.shots.length && !savedIds.has(session.id)) return;
   try {
     await db('readwrite', s => s.put(session));
@@ -270,12 +289,69 @@ async function save() {
   }
 }
 
+// ---- live output: this page connects out to a WebSocket server run by other software ------------
+// Message format: docs/streaming.md
+const out = { ws: null, retry: 0, sent: 0, dropped: 0, lastSample: 0 };
+const wsState = text => { $('wsState').textContent = text; };
+const shotInfo = (h, i) => ({ n: i + 1, t: h.t, x: h.x, y: h.y, ring: ring(Math.hypot(h.x, h.y), target()) });
+
+/** Send one message. Positions are dropped while the receiver is not keeping up; everything else is always sent. */
+function emit(type, data, droppable = false) {
+  const ws = out.ws;
+  if (ws?.readyState !== WebSocket.OPEN) return;
+  if (droppable && ws.bufferedAmount > 256 * 1024) { out.dropped++; return; }
+  ws.send(JSON.stringify({ type, ...data }));
+  out.sent++;
+}
+const emitSession = () => emit('session', { id: session.id, started: session.started, name: $('name').value, target: $('target').value,
+  shots: session.shots.map(shotInfo) });
+const emitStatus = () => emit('status', {
+  receiver: !!sam, sensor: !!(sam && sensorVars), streaming,
+  receiverSerial: receiverVars?.[0x95e] ?? null, sensorSerial: sensorVars?.[0x95e] ?? null,
+  receiverFirmware: receiverVars ? receiverVars[0] / 100 : null, sensorFirmware: sensorVars ? sensorVars[0] / 100 : null,
+  batteryVolts: sensorVars ? (sensorVars[0x67] & 0x7fffffff) / 100 : null, batteryLow: sensorVars ? sensorVars[0x67] < 0 : null });
+
+function wsConnect() {
+  clearTimeout(out.retry);
+  out.ws?.close();
+  out.ws = null;
+  const entered = $('wsUrl').value.trim();
+  localStorage.samOutput = JSON.stringify({ url: entered, rate: $('wsRate').value });
+  if (!$('wsOn').checked) return wsState('off');
+  if (!entered) { $('wsOn').checked = false; return wsState('enter an address first'); }
+  const url = /^wss?:\/\//.test(entered) ? entered : `ws://${entered}`;
+  let ws;
+  try { ws = new WebSocket(url); } catch (e) { $('wsOn').checked = false; return wsState(`invalid address: ${e.message}`); }
+  out.ws = ws;
+  wsState(`connecting to ${url}`);
+  ws.onopen = () => {
+    wsState(`connected to ${url}`);
+    log(`--- live output connected to ${url}`);
+    emit('hello', { software: 'sam-funktrainer', format: 1 });
+    emitStatus();
+    emitSession();
+  };
+  ws.onclose = () => {
+    if (out.ws !== ws) return; // replaced or switched off
+    wsState(`no connection to ${url}, retrying`);
+    out.retry = setTimeout(wsConnect, 2000);
+  };
+}
+{
+  const o = JSON.parse(localStorage.samOutput ?? '{}');
+  $('wsUrl').value = o.url ?? '';
+  if (o.rate) $('wsRate').value = o.rate;
+}
+$('wsOn').onchange = $('wsUrl').onchange = wsConnect;
+$('wsRate').onchange = () => { localStorage.samOutput = JSON.stringify({ url: $('wsUrl').value.trim(), rate: $('wsRate').value }); };
+
 function openSession(s) {
   session = s; selected = -1; recording = null; trace = [];
   $('name').value = s.name;
   if (TARGETS[s.target]) $('target').value = s.target;
   applySettings();
   listSessions();
+  emitSession();
 }
 
 function download(name, text, type) {
@@ -395,6 +471,8 @@ async function refresh() {
   } catch (e) {
     logError('re-read', e);
     status(`Error: ${e.message}`, true);
+  } finally {
+    emitStatus();
   }
 }
 
@@ -403,6 +481,7 @@ function disconnected(text, warn) {
   $('connect').textContent = 'Connect';
   status(text, warn);
   showDevice();
+  emitStatus();
 }
 
 $('connect').onclick = async () => {

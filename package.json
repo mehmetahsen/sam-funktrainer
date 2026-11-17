@@ -4,7 +4,9 @@
   "description": "Open-source software for the DISAG / KE Knestel SAM-Funktrainer (web page and command line)",
   "license": "MIT",
   "type": "module",
-  "bin": { "sam": "cli.js" },
+  "bin": {
+    "sam": "cli.js"
+  },
   "scripts": {
     "test": "node test.js",
     "build": "node build.js",
@@ -12,5 +14,8 @@
   },
   "dependencies": {
     "usb": "^2.14.0"
+  },
+  "devDependencies": {
+    "ws": "^8.23.0"
   }
 }
