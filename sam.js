@@ -26,6 +26,21 @@ export const VARS = {
   },
 };
 
+/** Allowed values of the stored variables, used by the page's editor: { min, max } or { values }.
+ *  Ranges from the original software's Var*.tkd files; the receiver channel is limited to the sensor's 1..4. */
+export const LIMITS = {
+  [RECEIVER]: { 1: { min: 1, max: 4 }, 2: { min: 0, max: 255 } },
+  [SENSOR]: {
+    1: { min: 1, max: 4 }, 2: { min: 0, max: 255 }, 3: { min: -32768, max: 32767 }, 4: { min: 200, max: 500 },
+    5: { min: 200, max: 500 }, 6: { min: 0, max: 255 }, 7: { min: -32768, max: 32767 }, 8: { min: 0, max: 359 },
+    9: { values: [1, 2, 4, 8] }, 10: { values: [8, 16, 32, 128] }, 11: { min: -32768, max: 32767 }, 12: { min: -32768, max: 32767 },
+  },
+};
+export const allowed = (target, nr, v) => {
+  const l = LIMITS[target][nr];
+  return !!l && Number.isInteger(v) && (l.values ? l.values.includes(v) : v >= l.min && v <= l.max);
+};
+
 export const hex = (v, digits = 4) => '0x' + (v >>> 0).toString(16).padStart(digits, '0');
 export const hexBytes = d => Array.from(new Uint8Array(d.buffer, d.byteOffset, d.byteLength), b => b.toString(16).padStart(2, '0')).join(' ');
 export const batteryVolts = v => (v & 0x7fffffff) / 100;
@@ -143,6 +158,7 @@ export class Trainer {
       try { out[key] = await this.readVar(target, Number(key)); } catch (e) {
         if (!(e instanceof NakError)) throw e;
         if (e.code === 1) return null;
+        if (e.code !== 3) throw e; // NAK 2: still streaming, the values would be missing
         out[key] = null;
       }
     }
@@ -226,22 +242,76 @@ export function lowpass(fg = 4, fs = 100) {
   };
 }
 
-// Dimensions in mm (ISSF 10 m targets, as in the original's WAFFE.DBF).
+// Target types of the original software (its WAFFE.DBF). Sizes in mm; dist = nominal distance in m;
+// lowest = lowest scoring ring; centre = scored by the hole centre instead of the pellet edge.
 export const TARGETS = {
-  lg: { name: 'Air rifle 10 m', rings: 10, d10: 0.5, ringWidth: 2.5, black: 30.5, pellet: 4.5 },
-  lp: { name: 'Air pistol 10 m', rings: 10, d10: 11.5, ringWidth: 8, black: 59.5, pellet: 4.5 },
+  lg: { name: 'Air rifle 10 m', rings: 10, lowest: 1, d10: 0.5, ringWidth: 2.5, black: 30.5, pellet: 4.5, dist: 10 },
+  lp: { name: 'Air pistol 10 m', rings: 10, lowest: 1, d10: 11.5, ringWidth: 8, black: 59.5, pellet: 4.5, dist: 10 },
+  kk: { name: 'Small bore 50 m', rings: 10, lowest: 1, d10: 10.4, ringWidth: 8, black: 112.4, pellet: 5.58, dist: 50 },
+  zs: { name: 'Zimmerstutzen 15 m', rings: 10, lowest: 1, d10: 4.5, ringWidth: 4.5, black: 40.5, pellet: 4.5, dist: 15 },
+  ls: { name: 'Running target 10 m', rings: 10, lowest: 1, d10: 5.5, ringWidth: 2.5, black: 30.5, pellet: 4.5, dist: 10 },
+  sf: { name: 'Rapid-fire pistol 25 m', rings: 10, lowest: 5, d10: 100, ringWidth: 40, black: 500, pellet: 5.6, dist: 25 },
+  spp: { name: 'Sport pistol precision 25 m', rings: 10, lowest: 1, d10: 50, ringWidth: 25, black: 200, pellet: 5.6, dist: 25 },
+  spd: { name: 'Sport pistol duel 25 m', rings: 10, lowest: 5, d10: 100, ringWidth: 40, black: 500, pellet: 5.6, dist: 25 },
+  gkp: { name: 'Large bore precision 25 m', rings: 10, lowest: 1, d10: 50, ringWidth: 25, black: 200, pellet: 10, dist: 25, centre: true },
+  gkd: { name: 'Large bore duel 25 m', rings: 10, lowest: 5, d10: 100, ringWidth: 40, black: 500, pellet: 10, dist: 25, centre: true },
 };
 
-/** Decimal ring value for a hit r mm from the centre (pellet edge scoring). */
+/** Radius of a ring's outer edge in mm (n = rings is the ten). */
+export const ringRadius = (n, t) => t.d10 / 2 + (t.rings - n) * t.ringWidth;
+
+/** Decimal ring value for a hit r mm from the centre; 0 outside the lowest scoring ring. */
 export function ring(r, t) {
-  const r10 = (t.d10 + t.pellet) / 2;
+  const r10 = (t.d10 + (t.centre ? 0 : t.pellet)) / 2;
   const v = r <= r10 ? t.rings + 1 - r / r10 : t.rings - (r - r10) / t.ringWidth;
-  return v < 1 ? 0 : Math.min(Math.floor(v * 10 + 1e-9) / 10, t.rings + 0.9);
+  return v < t.lowest ? 0 : Math.min(Math.floor(v * 10 + 1e-9) / 10, t.rings + 0.9);
+}
+
+/**
+ * Calibration from aimed marks. points: [{ rx, ry, X, Y }] with rx, ry the raw position (Tracker output)
+ * and X, Y the mark in mm at 10 m. Fits X = M·raw - offset by least squares, splits M into the rotation
+ * and the two zoom factors the sensor stores, and reports the error left at each mark with those values.
+ */
+export function fitCalibration(points) {
+  const S = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], bx = [0, 0, 0], by = [0, 0, 0];
+  for (const p of points) {
+    const v = [p.rx, p.ry, 1];
+    for (let i = 0; i < 3; i++) {
+      for (let j = 0; j < 3; j++) S[i][j] += v[i] * v[j];
+      bx[i] += v[i] * p.X; by[i] += v[i] * p.Y;
+    }
+  }
+  const det = m => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+    + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  const D = det(S);
+  if (!(Math.abs(D) > 1e-15)) throw new Error('the captured positions lie on a line or on top of each other');
+  const solve = rhs => [0, 1, 2].map(k => det(S.map((row, i) => row.map((v, j) => (j === k ? rhs[i] : v)))) / D);
+  const [a, b] = solve(bx), [d, e] = solve(by);
+  // M = diag(zoomX, zoomY) · R(phi): row 1 = zoomX (cos, -sin), row 2 = zoomY (sin, cos)
+  const wrap = v => Math.atan2(Math.sin(v), Math.cos(v));
+  let best = null;
+  for (const sx of [1, -1]) {
+    for (const sy of [1, -1]) {
+      const p1 = Math.atan2(-b * sx, a * sx), p2 = Math.atan2(d * sy, e * sy), diff = wrap(p1 - p2);
+      if (!best || Math.abs(diff) < Math.abs(best.diff)) best = { diff, sx, sy, phi: p2 + diff / 2 };
+    }
+  }
+  let { sx, sy, phi } = best;
+  if (sx > 0) { sx = -sx; sy = -sy; phi += Math.PI; } // same transform; the sensor's factory zoom is negative
+  const angle = (Math.round(phi * 180 / Math.PI) % 360 + 360) % 360;
+  const zoomX = Math.round(sx * Math.hypot(a, b)), zoomY = Math.round(sy * Math.hypot(d, e));
+  const rad = angle * Math.PI / 180, cos = Math.cos(rad), sin = Math.sin(rad);
+  const map = p => [zoomX * (p.rx * cos - p.ry * sin), zoomY * (p.rx * sin + p.ry * cos)];
+  const offX = points.reduce((s, p) => s + map(p)[0] - p.X, 0) / points.length;
+  const offY = points.reduce((s, p) => s + map(p)[1] - p.Y, 0) / points.length;
+  const errors = points.map(p => { const [x, y] = map(p); return Math.hypot(x - offX - p.X, y - offY - p.Y); });
+  return { angle, zoomX, zoomY, offX, offY, errors };
 }
 
 /**
  * Samples -> aim point in mm on the target face (x < 0 left, y < 0 up) and shot events.
- * cfg: { zoomX, zoomY, angle (deg, sensor value + mounting angle), offX, offY (mm), newFormula }
+ * cfg: { zoomX, zoomY, angle (deg, sensor value + mounting angle), offX, offY (mm at 10 m), newFormula,
+ *        scale (nominal target distance / 10 m) }. Output: x, y in mm on the target; rx, ry raw position.
  */
 export class Tracker {
   constructor(cfg) {
@@ -265,8 +335,10 @@ export class Tracker {
     const x = cfg.newFormula ? (c + d - a - b) / sum : (d - b) / (d + b);
     const y = cfg.newFormula ? (b + c - a - d) / sum : (c - a) / (c + a);
     const phi = cfg.angle * Math.PI / 180, cos = Math.cos(phi), sin = Math.sin(phi);
-    out.x = cfg.zoomX * (x * cos - y * sin) - cfg.offX;
-    out.y = cfg.zoomY * (x * sin + y * cos) - cfg.offY;
+    out.rx = x; out.ry = y;
+    const k = cfg.scale ?? 1;
+    out.x = k * (cfg.zoomX * (x * cos - y * sin) - cfg.offX);
+    out.y = k * (cfg.zoomY * (x * sin + y * cos) - cfg.offY);
     return out;
   }
 }

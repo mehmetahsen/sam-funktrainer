@@ -46,9 +46,16 @@ Needs Chrome, Edge or another Chromium-based browser. Firefox and Safari have no
 Open `sam-funktrainer.html` directly from disk, click **Connect** and pick the SAM-Funktrainer.
 The file is self-contained; no web server is needed.
 
-- Live aim trace on an air-rifle or air-pistol target, shot detection and decimal ring values.
-- Sessions are saved automatically in the browser with the aim trace of every shot (3 s before to 1 s after).
-  They can be reopened, deleted, exported as JSON (complete) or CSV (one line per shot), and imported again.
+- Live aim trace, shot detection and decimal ring values on the ten target types of the original software
+  (air rifle, air pistol, small bore, Zimmerstutzen, running target, 25 m pistol and large-bore targets) or on
+  your own target definitions.
+- Sessions are saved automatically in the browser with the aim trace and trigger force of every shot (3 s
+  before to 1 s after). They can be reopened, deleted, exported as JSON (complete) or CSV (one line per shot),
+  and imported again. Selecting a shot shows its trace on the target and diagrams of X, Y and trigger force
+  over time.
+- **Targets and printing** prints a target or the calibration sheet scaled to your real distance.
+- **Device settings** (see below) changes the shot sensitivity, the radio channel and the calibration, and
+  edits every stored variable, with automatic backups.
 - **Technical details** shows link and pairing state, the live raw sample, traffic counters, the USB
   descriptor, every known variable of receiver and sensor, and a rolling packet log with decoded text.
 
@@ -66,6 +73,23 @@ Details and message format: [docs/streaming.md](docs/streaming.md).
 The software does not know how the sensor is mounted. Change **Mount angle** in 90° steps until moving the
 gun right moves the dot right; if no angle fits, toggle **New formula**. **Centre on shots** moves the centre
 to the mean of the shots fired so far.
+
+### Device settings
+
+**These functions write into the receiver and the gun sensor. They follow what the original software does
+but have not been tested on real hardware.** A wrong value can make the sensor unreachable or the system
+unusable until the old values are written back. Every write needs confirmation; radio channel, calibration
+and the variable editor need an extra acknowledgement.
+
+- **Backups:** the stored settings are saved in the browser whenever they are read and differ from the last
+  backup, and again right before every write. Backups can be exported, imported and written back with
+  **Restore**. Export one to a file before changing anything.
+- **Shot detection sensitivity:** in use, and optionally as power-on default.
+- **Radio channel:** change it on both units (sensor first, then receiver), or search channels 1–4 when the
+  sensor is not reachable.
+- **Calibration:** aim at the five marks of the printed calibration sheet. The result (rotation, zoom, centre)
+  can be used in this page only, which writes nothing, or written to the sensor.
+- **Stored variables:** every stored setting of both units, with the allowed ranges from the original software.
 
 ## Command line
 
@@ -107,11 +131,14 @@ Add `--log` for a decoded packet log on stderr.
 
     {
       "id": "…", "started": "2026-11-17T08:29:04.000Z", "name": "…", "target": "lg",
-      "shots": [ { "t": 1794900544000, "x": 4.92, "y": -1.49, "trace": [[-2990, 3.1, 0.2], …, [0, 4.92, -1.49], …] } ]
+      "targetDef": { "name": "Air rifle 10 m", "rings": 10, "lowest": 1, "d10": 0.5, "ringWidth": 2.5, "black": 30.5, "pellet": 4.5, "dist": 10 },
+      "shots": [ { "t": 1794900544000, "x": 4.92, "y": -1.49, "trace": [[-2990, 3.1, 0.2, 3], …, [0, 4.92, -1.49, 3], …] } ]
     }
 
 `t` is the time of the shot in ms since 1970, `x` / `y` are mm on the target face (left and up negative), and
-each trace row is `[ms relative to the shot, x, y]`.
+each trace row is `[ms relative to the shot, x, y, trigger force]` (older files have no force value).
+`targetDef` is a copy of the target definition (sizes in mm, `dist` = nominal distance in m, `lowest` = lowest
+scoring ring, optional `centre: true` = scored by the hole centre), so sessions on custom targets can be read anywhere.
 
 ## Licence
 

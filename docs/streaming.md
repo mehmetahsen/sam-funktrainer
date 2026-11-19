@@ -55,9 +55,12 @@ changes: new or opened session, renamed, target changed, shot added or deleted, 
 A receiver can simply replace what it knows with the latest `session` message.
 
     {"type":"session","id":"bdf27e38-…","started":"2026-11-17T07:48:18.026Z","name":"stream test","target":"lg",
+     "targetDef":{"name":"Air rifle 10 m","rings":10,"lowest":1,"d10":0.5,"ringWidth":2.5,"black":30.5,"pellet":4.5,"dist":10},
      "shots":[{"n":1,"t":1794901703898,"x":4.87,"y":-1.58,"ring":8.9}]}
 
-`target` is `lg` (air rifle 10 m) or `lp` (air pistol 10 m).
+`target` is the key of the target type (`lg`, `lp`, `kk`, `zs`, `ls`, `sf`, `spp`, `spd`, `gkp`, `gkd`, or a
+custom key starting with `c-`). `targetDef` holds its dimensions as described under "Session file format" in
+the README, so a receiver can draw and score any target without knowing the key.
 
 ### `shot`
 Sent at the moment a shot is detected, before the following `session` message.

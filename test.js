@@ -1,6 +1,6 @@
 // node test.js
 import assert from 'node:assert/strict';
-import { parseSample, describePacket, formatVar, ring, lowpass, Tracker, TARGETS, SENSOR } from './sam.js';
+import { parseSample, describePacket, formatVar, ring, ringRadius, fitCalibration, allowed, lowpass, Tracker, TARGETS, SENSOR } from './sam.js';
 
 // Packet captured from the real sensor (docs/live-and-prior-art.md, probe 4).
 const view = text => new DataView(new Uint8Array(text.split(' ').map(h => parseInt(h, 16))).buffer);
@@ -21,6 +21,38 @@ assert.equal(ring(0, TARGETS.lg), 10.9);
 assert.equal(ring(2.5, TARGETS.lg), 10);    // pellet edge just touches the ten
 assert.equal(ring(2.51, TARGETS.lg), 9.9);
 assert.equal(ring(500, TARGETS.lg), 0);
+// Centre-scored target: the hole centre on the ten's edge is exactly 10.0. Rapid fire: outside ring 5 is 0.
+assert.equal(ring(25, TARGETS.gkp), 10);
+assert.equal(ring(ringRadius(5, TARGETS.sf) + 2.8, TARGETS.sf), 5);
+assert.equal(ring(ringRadius(5, TARGETS.sf) + 3, TARGETS.sf), 0);
+assert.equal(ringRadius(1, TARGETS.lp) * 2, 155.5); // the original's total diameter
+
+// Editor limits.
+assert.equal(allowed(SENSOR, 10, 32), true);
+assert.equal(allowed(SENSOR, 10, 33), false);
+assert.equal(allowed(SENSOR, 1, 5), false);
+assert.equal(allowed(SENSOR, 0, 108), false); // firmware version is not editable
+
+// Calibration: raw positions made from a known rotation, zoom and offset must give them back.
+{
+  const truth = { angle: 123, zoomX: -480, zoomY: -470, offX: 1.5, offY: -2 }, rad = truth.angle * Math.PI / 180;
+  const marks = [[0, 0], [0, -50], [0, 50], [-50, 0], [50, 0]];
+  const points = marks.map(([X, Y]) => {
+    const u = (X + truth.offX) / truth.zoomX, v = (Y + truth.offY) / truth.zoomY; // = R(angle) · raw
+    return { X, Y, rx: u * Math.cos(rad) + v * Math.sin(rad), ry: -u * Math.sin(rad) + v * Math.cos(rad) };
+  });
+  const fit = fitCalibration(points);
+  assert.deepEqual([fit.angle, fit.zoomX, fit.zoomY], [123, -480, -470]);
+  assert.ok(Math.abs(fit.offX - 1.5) < 1e-6 && Math.abs(fit.offY + 2) < 1e-6);
+  assert.ok(Math.max(...fit.errors) < 1e-6);
+  // The fitted values make the Tracker put the right mark under the aim.
+  const t = new Tracker({ zoomX: fit.zoomX, zoomY: fit.zoomY, angle: fit.angle, offX: fit.offX, offY: fit.offY, newFormula: false });
+  const { rx, ry } = points[4]; // right mark: old formula x = (D-B)/(D+B), y = (C-A)/(C+A)
+  let p;
+  for (let i = 0; i < 300; i++) p = t.feed({ a: 2000 * (1 - ry), b: 2000 * (1 - rx), c: 2000 * (1 + ry), d: 2000 * (1 + rx), shot: false });
+  assert.ok(Math.abs(p.x - 50) < 0.01 && Math.abs(p.y) < 0.01, `right mark read as ${p.x}, ${p.y}`);
+  assert.throws(() => fitCalibration([points[0], points[0], points[0]]));
+}
 
 // Low-pass settles to its input (unity gain at DC).
 const f = lowpass();

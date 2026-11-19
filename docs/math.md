@@ -42,6 +42,9 @@ For every measurement packet (nominally 100 per second), with quadrant values A,
    - nominal distance: the distance the target type is defined for (10 m for air rifle and air pistol), not
      the real distance. Training at a shorter distance uses a proportionally smaller printed target.
    - offsetX, offsetY: the centre correction in mm from the quick adjustment, kept on the PC.
+   - Difference in `sam.js`: the offset is subtracted before multiplying by the distance factor, so it is kept
+     in mm at 10 m and stays valid when switching between target types of different nominal distances.
+     For 10 m targets both are the same.
    - Sign convention of the result: X < 0 is left, Y < 0 is up.
 7. **Shot.** On the rising edge of the status word's shot bit, the position computed from that same packet
    is the hit. The original also keeps a "new shot allowed" flag to suppress repeats.
@@ -78,6 +81,9 @@ diameter d:
     ring = N − (r − R10) / W          otherwise
     ring is cut (not rounded) to one decimal; below 1 it is 0; the maximum is N + 0.9
 
+`sam.js` gives 0 below the target's lowest scoring ring (ring 5 on the rapid-fire and duel targets) instead of
+below 1; the reconstructed original only checks for 1.
+
 For targets scored by the pellet centre (the large-bore types) d is taken as 0.
 
 The original also stores the "Teiler" = 100 · r, the distance from the centre in 1/100 mm.
@@ -98,6 +104,15 @@ Target dimensions from the original's database (mm):
 | Sport pistol precision | 500 | 200 | 50 | 25 | 5.6 | 25 m |
 | Large bore precision | 500 | 200 | 50 | 25 | 10 | 25 m (centre scoring) |
 | Large bore duel | 500 | 500 | 100 | 40 | 10 | 25 m (centre scoring) |
+
+## Calibration in this project's page
+
+The page's five-mark calibration uses the same sheet as the original (marks 50 mm left, right, above and below
+the centre at 10 m), but a different calculation: a least-squares fit of
+`mark = M · raw − offset` over all five captured points, with M split into a rotation and the two zoom factors.
+It reports the error left at each mark, so a mark captured while not aimed at it shows up. The rotation is
+written as the sensor angle (minus the page's mounting angle) and the zoom factors as integers, as the original
+does; the offset stays in the page. `test.js` checks that the fit recovers a known rotation, zoom and offset.
 
 ## Calibration procedures of the original software
 

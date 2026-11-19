@@ -13,7 +13,7 @@ One set was available: receiver firmware 1.06, sensor firmware 1.08, on Linux.
 | Stream start and stop, including the retry on NAK 2 | confirmed |
 | Measurement packet length and field positions | confirmed (quadrants, battery-low bit, "no pulse sensor") |
 | Command-line tool (`cli.js`) on Linux with Node | confirmed |
-| Web page logic | confirmed only against the simulated receiver in `tools/` |
+| Web page logic, including all device-settings writes | confirmed only against the simulated receiver in `tools/` |
 
 ## Not yet confirmed
 
@@ -23,7 +23,7 @@ One set was available: receiver firmware 1.06, sensor firmware 1.08, on Linux.
 | Shot bit (status bit 10) | no shot was fired while recording |
 | Position math: direction, scale, which of the two formulas | needs someone aiming at a target and comparing with real hits or the original software |
 | Ring values against the original software | needs the same shots scored by both |
-| Any write other than stream on/off (channel, sensitivity, angle, zoom, transmit power) | never sent; they change stored settings |
+| Any write other than stream on/off (channel, sensitivity, angle, zoom, transmit power, restore) | implemented in the page following the original software, never sent to real hardware; they change stored settings |
 | Trigger-force channels | no force sensor available |
 | Pulse word | no pulse sensor available |
 | Windows with WinUSB, macOS, Android | untested |

@@ -18,7 +18,7 @@ const { values: opt, positionals: [cmd = 'info', seconds] } = parseArgs({
 });
 const target = TARGETS[opt.target];
 if (!['info', 'stream'].includes(cmd) || !target) {
-  console.error('usage: cli.js info | stream [seconds] [--target lg|lp] [--new-formula] [--mount-angle deg] [--log]');
+  console.error(`usage: cli.js info | stream [seconds] [--target ${Object.keys(TARGETS).join('|')}] [--new-formula] [--mount-angle deg] [--log]`);
   process.exit(2);
 }
 
@@ -56,7 +56,8 @@ try {
   } else {
     if (!sensor) throw new Error('sensor not reachable');
     if (sensor[0x67] < 0) console.error(`warning: sensor battery low (${batteryVolts(sensor[0x67])} V)`);
-    tracker = new Tracker({ zoomX: sensor[0x0b], zoomY: sensor[0x0c], angle: sensor[8] + Number(opt['mount-angle']), offX: 0, offY: 0, newFormula: opt['new-formula'] });
+    tracker = new Tracker({ zoomX: sensor[0x0b], zoomY: sensor[0x0c], angle: sensor[8] + Number(opt['mount-angle']), offX: 0, offY: 0,
+      newFormula: opt['new-formula'], scale: target.dist / 10 });
     console.log('t_ms,x_mm,y_mm,shot,a,b,c,d,force');
     process.on('SIGINT', () => quit(0));
     await sam.startStream();
