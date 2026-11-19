@@ -20,6 +20,12 @@
   button, select, input { font: inherit; padding: .3rem .6rem; }
   input[type=number] { width: 5.5rem; }
   summary { cursor: pointer; font-weight: 600; margin-bottom: .75rem; }
+  #help { border: 1px solid color-mix(in srgb, currentColor 25%, transparent); border-radius: .4rem; padding: .5rem .9rem; }
+  #help[open] summary { margin-bottom: .25rem; }
+  #help h3 { font-size: .95rem; margin: .9rem 0 .2rem; }
+  #help p, #help li { margin: .2rem 0; }
+  #help code { font-size: .85em; overflow-wrap: anywhere; }
+  footer { grid-column: 1 / -1; font-size: .85rem; opacity: .8; }
   .cards { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); margin-bottom: 1rem; }
   .cards > section p { margin: .4rem 0; }
   table { border-collapse: collapse; width: 100%; font-size: .85rem; }
@@ -49,6 +55,50 @@
   <button id="connect">Connect</button>
 </header>
 <p id="status" role="status">Not connected. Needs Chrome, Edge or another Chromium browser.</p>
+<details id="help" class="wide">
+  <summary>How to use</summary>
+  <h3>What you need</h3>
+  <ul>
+    <li>Chrome, Edge or another Chromium-based browser on Windows, macOS, Linux, ChromeOS or Android.
+        Firefox, Safari and all browsers on iPhone and iPad cannot talk to USB devices.</li>
+    <li>The SAM-Funktrainer receiver plugged into this computer, the target unit powered, and the gun sensor charged and switched on.</li>
+  </ul>
+  <h3>One-time setup</h3>
+  <ul>
+    <li><strong>Windows:</strong> the receiver needs Windows' generic WinUSB driver.
+      <ol>
+        <li>Download <a href="https://zadig.akeo.ie/" target="_blank" rel="noopener">Zadig</a> and start it.</li>
+        <li>Choose <em>Options → List All Devices</em>, then pick <em>SAM-Funktrainer</em> from the list
+            (USB ID <code>0ADC 0005</code>).</li>
+        <li>Make sure the target driver box says <em>WinUSB</em> and click <em>Replace Driver</em> (or <em>Install Driver</em>).</li>
+        <li>Unplug the receiver and plug it in again, then reload this page.</li>
+      </ol>
+      The old Knestel software will no longer find the receiver on this computer. To undo, open Device Manager,
+      uninstall the SAM-Funktrainer device with "delete the driver", and replug it.</li>
+    <li><strong>Linux:</strong> allow your user to access the receiver, then replug it:<br>
+      <code>echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0adc", ATTR{idProduct}=="0005", MODE="0660", TAG+="uaccess"' | sudo tee /etc/udev/rules.d/70-sam-funktrainer.rules</code><br>
+      Chromium installed as a snap also needs <code>sudo snap connect chromium:raw-usb</code>.</li>
+    <li><strong>macOS, ChromeOS, Android:</strong> nothing to do. On Android, connect the receiver with a USB-OTG adapter.</li>
+  </ul>
+  <h3>Shooting</h3>
+  <ol>
+    <li>Click <strong>Connect</strong> and choose the SAM-Funktrainer. The line under the title tells you what to fix if something is missing.</li>
+    <li>Below about 6 m set the switch on the target unit to "near", further away to "far".</li>
+    <li>Choose your target type. To shoot at paper, print a target at the right size under <em>Targets and printing</em>.</li>
+    <li>If the dot moves the wrong way when you move the gun, change <strong>Mount angle</strong> in steps of 90°.</li>
+    <li>Fire a few shots at the centre and click <strong>Centre on shots</strong>; this is the quick adjustment.</li>
+    <li>Click a shot's ring value to see its aim trace and diagrams.</li>
+  </ol>
+  <h3>Your data</h3>
+  <p>Shots are saved automatically in this browser only. Use <strong>JSON</strong> under <em>Saved sessions</em> to keep a copy or move it to another computer.</p>
+  <h3>If it does not work</h3>
+  <ul>
+    <li><strong>The receiver is not in the list:</strong> on Windows, install the WinUSB driver as above; on Linux, add the rule above and replug.</li>
+    <li><strong>"Access denied" or "unable to claim":</strong> another program or browser tab is using the receiver. Close it, replug, try again.</li>
+    <li><strong>The sensor does not answer:</strong> switch it on and check its battery. If it still does not answer, use
+        <em>Search for the sensor</em> under <em>Device settings</em>.</li>
+  </ul>
+</details>
 <canvas id="view" width="900" height="900" aria-label="Target with aim trace and shots"></canvas>
 <section>
   <p><input id="name" placeholder="Session name (shooter, note)" aria-label="Session name"></p>
@@ -173,7 +223,7 @@
   </section>
 </details>
 
-<details id="tech" class="wide" open>
+<details id="tech" class="wide">
   <summary>Technical details</summary>
   <div class="cards">
     <section><h2>Link</h2><table id="tLink"></table></section>
@@ -206,6 +256,12 @@
     <p><button value="cancel" autofocus>Cancel</button> <button id="dlgOk" value="ok" class="dangerBtn">Write</button></p>
   </form>
 </dialog>
+
+<footer>
+  Open source, not affiliated with DISAG or Knestel:
+  <a href="https://github.com/mehmetahsen/sam-funktrainer" target="_blank" rel="noopener">source code and documentation</a>.
+  Your data stays in this browser.
+</footer>
 
 <script type="module">
 import { Trainer, Tracker, NakError, TARGETS, LIMITS, USB_FILTER, RECEIVER, SENSOR, VARS, allowed, ring, ringRadius, fitCalibration, hex, hexBytes, formatVar, describePacket, usbInfo } from './sam.js';
@@ -1123,7 +1179,7 @@ function disconnected(text, warn) {
 $('connect').onclick = async () => {
   try {
     if (sam) { const old = sam; await old.close(); log('--- disconnected'); return disconnected('Disconnected.'); }
-    if (!navigator.usb) return status('This browser has no WebUSB. Use Chrome or Edge.', true);
+    if (!navigator.usb) return status('This browser cannot talk to USB devices. Use Chrome or Edge (not Firefox or Safari), and open the page over https.', true);
     dev = await navigator.usb.requestDevice({ filters: [USB_FILTER] });
     status('Connecting…');
     log(`--- connecting to ${dev.productName} ${dev.serialNumber}`);
@@ -1135,6 +1191,10 @@ $('connect').onclick = async () => {
     await refresh();
   } catch (e) {
     if (e.name === 'NotFoundError') return; // chooser cancelled
+    if (e.name === 'SecurityError' || e.name === 'NetworkError' || /claim|access/i.test(e.message)) {
+      logError('connect', e);
+      return status(`Cannot open the receiver (${e.message}). Close other programs or tabs that use it and replug it. On Windows, install the WinUSB driver (see "How to use").`, true);
+    }
     logError('connect', e);
     status(`Error: ${e.message}`, true);
   }
@@ -1157,6 +1217,7 @@ $('center').onclick = () => {
 $('clearLog').onclick = () => { logLines = []; logDirty = true; };
 $('copyLog').onclick = () => navigator.clipboard.writeText(logLines.join('\n'));
 
+if (!localStorage.samHelpSeen) { $('help').open = true; localStorage.samHelpSeen = '1'; } // open once, for first-time users
 applySettings();
 listSessions().catch(e => status(`Saved sessions are unavailable: ${e.message}`, true));
 listBackups();

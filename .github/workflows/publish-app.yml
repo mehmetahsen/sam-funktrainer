@@ -1,0 +1,43 @@
+# Tests the code, builds the single-file web app and copies it into the site repository
+# mehmetahsen/mehmetahsen.github.io (public/sam-funktrainer/index.html). That push deploys
+# https://mehmetahsen.de/sam-funktrainer/ through the site's own workflow.
+# PAGES_DEPLOY_KEY: private half of a deploy key with write access to the site repository only.
+name: Publish web app
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-app
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: node test.js
+      - run: node build.js
+      - uses: actions/checkout@v7
+        with:
+          repository: mehmetahsen/mehmetahsen.github.io
+          ssh-key: ${{ secrets.PAGES_DEPLOY_KEY }}
+          path: site
+      - name: Commit the app to the site if it changed
+        run: |
+          mkdir -p site/public/sam-funktrainer
+          cp sam-funktrainer.html site/public/sam-funktrainer/index.html
+          cd site
+          git add public/sam-funktrainer/index.html
+          if git diff --cached --quiet; then echo "App unchanged"; exit 0; fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "Update SAM-Funktrainer app to mehmetahsen/sam-funktrainer@${GITHUB_SHA::7}"
+          git push

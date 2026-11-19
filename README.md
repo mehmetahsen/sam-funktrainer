@@ -4,6 +4,9 @@ The DISAG / KE Knestel **SAM-Funktrainer** is a wireless aim-analysis trainer fo
 (USB receiver `0adc:0005`). Its Windows software is no longer supported; owners report being told by the
 vendor's support that it does not work on Windows 10.
 
+**Use it now: [mehmetahsen.de/sam-funktrainer](https://mehmetahsen.de/sam-funktrainer/)**. Open it in Chrome or
+Edge, plug in the receiver and click **Connect**. The page explains the one-time setup (a driver on Windows).
+
 This repository contains:
 
 - a **description of the system and its USB protocol**, worked out from the original software and confirmed
@@ -43,8 +46,11 @@ Details: [docs/status.md](docs/status.md).
 
 Needs Chrome, Edge or another Chromium-based browser. Firefox and Safari have no WebUSB.
 
-Open `sam-funktrainer.html` directly from disk, click **Connect** and pick the SAM-Funktrainer.
-The file is self-contained; no web server is needed.
+Open **https://mehmetahsen.de/sam-funktrainer/**, click **Connect** and pick the SAM-Funktrainer. "How to use"
+on the page covers the one-time setup per operating system.
+
+For offline use, download `sam-funktrainer.html` from this repository and open it from disk. The file is
+self-contained; no web server is needed.
 
 - Live aim trace, shot detection and decimal ring values on the ten target types of the original software
   (air rifle, air pistol, small bore, Zimmerstutzen, running target, 25 m pistol and large-bore targets) or on
@@ -123,6 +129,7 @@ Add `--log` for a decoded packet log on stderr.
 | `cli.js` | Command-line tool |
 | `tools/demo.html`, `tools/fake-receiver.js` | The page running against a simulated receiver, for work without hardware: `npm run web`, then open `http://localhost:8000/tools/demo.html` |
 | `tools/ws-receiver.js` | Example receiver for the live output |
+| `.github/workflows/publish-app.yml` | On every push to `main`: runs the tests, builds the page and publishes it to mehmetahsen.de through the site repository |
 | `tools/probe_*.py` | The step-by-step Python probes used to confirm the protocol (need `pyusb`) |
 | `tools/ketk32_decode.py` | Decoder for the original software's script files |
 | `70-sam-funktrainer.rules` | Linux udev rule for access without root |
